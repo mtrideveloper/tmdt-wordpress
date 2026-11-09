@@ -1,780 +1,815 @@
 <?php
 /**
- * Single Product Template for Astra Shoe Store (MotionLab).
- * Handles both WooCommerce single products and standalone demo preview mode.
+ * Single Product Template — MotionLab / Astra Shoe Store
+ * Mọi dữ liệu lấy từ WooCommerce / WordPress DB, không hardcode.
  */
 defined( 'ABSPATH' ) || exit;
 
-get_header();
+// Bắt buộc phải có WooCommerce và sản phẩm thật
+if ( ! class_exists( 'WooCommerce' ) || ! is_singular( 'product' ) ) {
+	wp_redirect( home_url( '/' ) );
+	exit;
+}
 
-$shop_page     = get_page_by_path( 'shop', OBJECT, 'page' );
-$cart_page     = get_page_by_path( 'cart', OBJECT, 'page' );
-$checkout_page = get_page_by_path( 'checkout', OBJECT, 'page' );
-$shop_url      = function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'shop' ) : ( $shop_page ? get_permalink( $shop_page ) : home_url( '/' ) );
-$cart_url      = function_exists( 'wc_get_cart_url' ) ? wc_get_cart_url() : ( $cart_page ? get_permalink( $cart_page ) : home_url( '/cart/' ) );
-$checkout_url  = function_exists( 'wc_get_checkout_url' ) ? wc_get_checkout_url() : ( $checkout_page ? get_permalink( $checkout_page ) : home_url( '/checkout/' ) );
+// =========================================================================
+// 1. LẤY SẢN PHẨM VÀ DỮ LIỆU CƠ BẢN
+// =========================================================================
+global $product;
+$product = wc_get_product( get_queried_object_id() );
 
-$is_wc          = class_exists( 'WooCommerce' );
-$queried_id     = get_queried_object_id();
-$has_wc_product = $is_wc && ( is_singular( 'product' ) || ( $queried_id && get_post_type( $queried_id ) === 'product' ) );
-$product        = $has_wc_product && function_exists( 'wc_get_product' ) ? wc_get_product( $queried_id ) : null;
+if ( ! $product || ! $product->is_visible() ) {
+	wp_redirect( wc_get_page_permalink( 'shop' ) );
+	exit;
+}
 
-// Product Data defaults (Demo values when viewing without WooCommerce post)
-$title       = 'Velocity Runner 01 Pro';
-$sku         = 'ML-VR01-RED';
-$category    = 'Giày chạy bộ · Hiệu năng cao';
-$price_html  = '<span class="shoe-price-current">1.890.000₫</span><span class="shoe-price-old">2.350.000₫</span><span class="shoe-price-discount">-20%</span>';
-$rating_num  = '4.9';
-$review_cnt  = 128;
-$is_in_stock = true;
-$stock_text  = 'Còn 12 đôi trong kho · Sẵn sàng giao';
-$short_desc  = 'Được thiết kế cho những bước chạy bứt phá, Velocity Runner 01 kết hợp bộ đế bọt Eva phản hồi lực kép và chất liệu dệt PrimeKnit 3D thoáng khí 360 độ, mang lại cảm giác êm ái, bám đường chắc chắn và tối ưu năng lượng trên mọi cự ly.';
+$prod_id     = $product->get_id();
+$title       = $product->get_name();
+$sku         = $product->get_sku();
+$price_html  = $product->get_price_html();
+$is_in_stock = $product->is_in_stock();
+$short_desc  = $product->get_short_description();
+$long_desc   = $product->get_description();
+$permalink   = $product->get_permalink();
 
-$images = array(
-	'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=1200&q=85',
-	'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?auto=format&fit=crop&w=1200&q=85',
-	'https://images.unsplash.com/photo-1608231387042-66d1773070a5?auto=format&fit=crop&w=1200&q=85',
-	'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?auto=format&fit=crop&w=1200&q=85',
-);
+// Tồn kho
+$stock_qty  = $product->get_stock_quantity();
+$stock_text = $is_in_stock
+	? ( $stock_qty ? sprintf( 'Còn %d sản phẩm trong kho', (int) $stock_qty ) : 'Còn hàng · Sẵn sàng giao' )
+	: 'Hết hàng tạm thời';
 
-if ( $product ) {
-	$title       = $product->get_name();
-	$sku         = $product->get_sku() ? $product->get_sku() : 'ML-' . $product->get_id();
-	$price_html  = $product->get_price_html();
-	$is_in_stock = $product->is_in_stock();
-	$stock_text  = $is_in_stock ? ( $product->get_stock_quantity() ? 'Còn ' . $product->get_stock_quantity() . ' sản phẩm' : 'Còn hàng' ) : 'Hết hàng tạm thời';
+// =========================================================================
+// 2. DANH MỤC & TAG
+// =========================================================================
+$cat_terms = get_the_terms( $prod_id, 'product_cat' );
+$cat_terms = ( ! empty( $cat_terms ) && ! is_wp_error( $cat_terms ) ) ? $cat_terms : array();
+// Lọc bỏ Uncategorized
+$cat_terms = array_filter( $cat_terms, function( $t ) {
+	return 'uncategorized' !== $t->slug;
+} );
+$cat_term    = ! empty( $cat_terms ) ? reset( $cat_terms ) : null;
+$cat_name    = $cat_term ? $cat_term->name : '';
+$cat_url     = $cat_term ? get_term_link( $cat_term ) : wc_get_page_permalink( 'shop' );
 
-	$cats = get_the_terms( $product->get_id(), 'product_cat' );
-	if ( ! empty( $cats ) && ! is_wp_error( $cats ) ) {
-		$category = $cats[0]->name;
-	}
+$tag_terms = get_the_terms( $prod_id, 'product_tag' );
+$tag_terms = ( ! empty( $tag_terms ) && ! is_wp_error( $tag_terms ) ) ? $tag_terms : array();
 
-	if ( $product->get_short_description() ) {
-		$short_desc = $product->get_short_description();
-	}
-
-	$rating_val = (float) $product->get_average_rating();
-	if ( $rating_val > 0 ) {
-		$rating_num = number_format( $rating_val, 1 );
-		$review_cnt = $product->get_review_count();
-	}
-
-	$wc_images = array();
-	$thumb_id  = $product->get_image_id();
-	if ( $thumb_id ) {
-		$wc_images[] = wp_get_attachment_image_url( $thumb_id, 'full' );
-	}
-	$gallery_ids = $product->get_gallery_image_ids();
-	if ( ! empty( $gallery_ids ) ) {
-		foreach ( $gallery_ids as $gid ) {
-			$url = wp_get_attachment_image_url( $gid, 'full' );
-			if ( $url ) {
-				$wc_images[] = $url;
-			}
-		}
-	}
-	if ( ! empty( $wc_images ) ) {
-		$images = array_values( array_filter( $wc_images ) );
+// =========================================================================
+// 3. HÌNH ẢNH SẢN PHẨM
+// =========================================================================
+$images   = array();
+$thumb_id = $product->get_image_id();
+if ( $thumb_id ) {
+	$images[] = array(
+		'full'   => wp_get_attachment_image_url( $thumb_id, 'full' ),
+		'medium' => wp_get_attachment_image_url( $thumb_id, 'woocommerce_single' ),
+		'alt'    => trim( wp_strip_all_tags( get_post_meta( $thumb_id, '_wp_attachment_image_alt', true ) ) ) ?: $title,
+	);
+}
+foreach ( $product->get_gallery_image_ids() as $gid ) {
+	$url = wp_get_attachment_image_url( $gid, 'full' );
+	if ( $url ) {
+		$images[] = array(
+			'full'   => $url,
+			'medium' => wp_get_attachment_image_url( $gid, 'woocommerce_single' ),
+			'alt'    => trim( wp_strip_all_tags( get_post_meta( $gid, '_wp_attachment_image_alt', true ) ) ) ?: $title,
+		);
 	}
 }
 
-// --------------------------------------------------------------------------
-// QUERY REAL RELATED PRODUCTS FROM WOOCOMMERCE / DATABASE
-// --------------------------------------------------------------------------
-$related_products_list = array();
-$current_prod_id       = $product ? $product->get_id() : ( $queried_id ? $queried_id : 0 );
+// =========================================================================
+// 4. ĐÁNH GIÁ / REVIEWS
+// =========================================================================
+$avg_rating  = (float) $product->get_average_rating();
+$review_cnt  = (int) $product->get_review_count();
 
-if ( $is_wc ) {
-	// 1. First priority: Related products by category & tags (WooCommerce native)
-	if ( $current_prod_id && function_exists( 'wc_get_related_products' ) ) {
-		$rel_ids = wc_get_related_products( $current_prod_id, 4 );
-		if ( ! empty( $rel_ids ) ) {
-			foreach ( $rel_ids as $r_id ) {
-				$r_prod = wc_get_product( $r_id );
-				if ( $r_prod && $r_prod->is_visible() ) {
-					$related_products_list[ $r_id ] = $r_prod;
-				}
-			}
-		}
-	}
-
-	// 2. Second priority: If fewer than 4 related items, fetch other published products
-	if ( count( $related_products_list ) < 4 && function_exists( 'wc_get_products' ) ) {
-		$exclude  = array_merge( array( $current_prod_id ), array_keys( $related_products_list ) );
-		$extra_wc = wc_get_products( array(
-			'status'     => 'publish',
-			'limit'      => 4 - count( $related_products_list ),
-			'exclude'    => $exclude,
-			'orderby'    => 'rand',
-			'visibility' => 'catalog',
-		) );
-		foreach ( $extra_wc as $extra_prod ) {
-			$related_products_list[ $extra_prod->get_id() ] = $extra_prod;
-		}
-	}
-
-	// 3. Fallback WP_Query for post_type 'product'
-	if ( count( $related_products_list ) < 4 ) {
-		$exclude     = array_merge( array( $current_prod_id ), array_keys( $related_products_list ) );
-		$extra_posts = get_posts( array(
-			'post_type'      => 'product',
-			'post_status'    => 'publish',
-			'posts_per_page' => 4 - count( $related_products_list ),
-			'post__not_in'   => $exclude,
-			'orderby'        => 'rand',
-		) );
-		foreach ( $extra_posts as $ep ) {
-			$p_obj = function_exists( 'wc_get_product' ) ? wc_get_product( $ep->ID ) : null;
-			if ( $p_obj ) {
-				$related_products_list[ $ep->ID ] = $p_obj;
-			}
-		}
-	}
-}
-
-// Fetch real reviews from WordPress comments if available
-$real_reviews = array();
-if ( $product ) {
+// Tính phân bổ sao từ DB
+$rating_counts = array( 5 => 0, 4 => 0, 3 => 0, 2 => 0, 1 => 0 );
+$real_reviews  = array();
+if ( $review_cnt > 0 ) {
 	$real_reviews = get_comments( array(
-		'post_id' => $product->get_id(),
+		'post_id' => $prod_id,
 		'status'  => 'approve',
+		'type'    => 'review',
+		'number'  => 20,
+		'orderby' => 'comment_date',
+		'order'   => 'DESC',
 	) );
+	foreach ( $real_reviews as $rv ) {
+		$r = (int) get_comment_meta( $rv->comment_ID, 'rating', true );
+		if ( $r >= 1 && $r <= 5 ) {
+			$rating_counts[ $r ]++;
+		}
+	}
 }
+
+// =========================================================================
+// 5. THUỘC TÍNH SẢN PHẨM (SIZE, MÀU SẮC, v.v.)
+// =========================================================================
+$attributes = $product->get_attributes();
+
+// Tìm size attribute
+$size_options = array();
+foreach ( $attributes as $attr ) {
+	$attr_name_lower = strtolower( wc_attribute_label( $attr->get_name() ) );
+	if ( false !== strpos( $attr_name_lower, 'size' ) || false !== strpos( $attr_name_lower, 'kích cỡ' ) || false !== strpos( $attr_name_lower, 'size' ) || $attr->get_name() === 'pa_size' ) {
+		$size_options = $attr->is_taxonomy()
+			? wc_get_product_terms( $prod_id, $attr->get_name(), array( 'fields' => 'names' ) )
+			: $attr->get_options();
+		break;
+	}
+}
+
+// Tìm màu attribute
+$color_options = array();
+foreach ( $attributes as $attr ) {
+	$attr_name_lower = strtolower( wc_attribute_label( $attr->get_name() ) );
+	if ( false !== strpos( $attr_name_lower, 'color' ) || false !== strpos( $attr_name_lower, 'màu' ) || false !== strpos( $attr_name_lower, 'colour' ) || $attr->get_name() === 'pa_color' || $attr->get_name() === 'pa_colour' || $attr->get_name() === 'pa_mau' ) {
+		$color_options = $attr->is_taxonomy()
+			? wc_get_product_terms( $prod_id, $attr->get_name(), array( 'fields' => 'names' ) )
+			: $attr->get_options();
+		break;
+	}
+}
+
+// =========================================================================
+// 6. THÔNG SỐ KỸ THUẬT — Từ custom fields / product attributes
+// =========================================================================
+// Lấy tất cả attributes để hiển thị trong tab Thông số
+$spec_rows = array();
+foreach ( $attributes as $attr ) {
+	if ( ! $attr->get_visible() ) continue; // chỉ hiển thị attribute được đánh dấu visible
+	$label = wc_attribute_label( $attr->get_name() );
+	$vals  = $attr->is_taxonomy()
+		? implode( ', ', wc_get_product_terms( $prod_id, $attr->get_name(), array( 'fields' => 'names' ) ) )
+		: implode( ', ', $attr->get_options() );
+	if ( $vals ) {
+		$spec_rows[ $label ] = $vals;
+	}
+}
+// Thêm trọng lượng & kích thước nếu có
+if ( $product->get_weight() ) {
+	$spec_rows[ 'Trọng lượng' ] = wc_format_weight( $product->get_weight() );
+}
+if ( $product->has_dimensions() ) {
+	$spec_rows[ 'Kích thước (D×R×C)' ] = wc_format_dimensions( $product->get_dimensions( false ) );
+}
+if ( $sku ) {
+	$spec_rows[ 'Mã sản phẩm (SKU)' ] = $sku;
+}
+
+// =========================================================================
+// 7. SẢN PHẨM LIÊN QUAN — WooCommerce native + fallback
+// =========================================================================
+$related_ids = wc_get_related_products( $prod_id, 4 );
+$related_products = array();
+foreach ( $related_ids as $rid ) {
+	$rp = wc_get_product( $rid );
+	if ( $rp && $rp->is_visible() ) {
+		$related_products[] = $rp;
+	}
+}
+// Nếu chưa đủ 4, lấy thêm sản phẩm bất kỳ
+if ( count( $related_products ) < 4 ) {
+	$exclude_ids = array_merge( array( $prod_id ), $related_ids );
+	$extra = wc_get_products( array(
+		'status'     => 'publish',
+		'limit'      => 4 - count( $related_products ),
+		'exclude'    => $exclude_ids,
+		'orderby'    => 'rand',
+		'visibility' => 'catalog',
+	) );
+	$related_products = array_merge( $related_products, $extra );
+}
+
+// =========================================================================
+// 8. URL ĐIỀU HƯỚNG
+// =========================================================================
+$shop_url     = wc_get_page_permalink( 'shop' );
+$cart_url     = wc_get_cart_url();
+$checkout_url = wc_get_checkout_url();
+
+// =========================================================================
+// 9. BẢNG SIZE — Lấy từ trang WordPress có slug 'bang-size'
+// =========================================================================
+$size_guide_page = get_page_by_path( 'bang-size', OBJECT, 'page' );
+
+// =========================================================================
+// 9. BADGE SẢN PHẨM — Từ dữ liệu thật
+// =========================================================================
+$badge_text = '';
+if ( $product->is_on_sale() ) {
+	$reg  = (float) $product->get_regular_price();
+	$sale = (float) $product->get_sale_price();
+	if ( $reg > 0 && $sale > 0 ) {
+		$pct        = round( ( ( $reg - $sale ) / $reg ) * 100 );
+		$badge_text = '-' . $pct . '%';
+	} else {
+		$badge_text = 'Sale';
+	}
+} elseif ( $product->is_featured() ) {
+	$badge_text = 'Nổi bật';
+} elseif ( ( time() - get_the_time( 'U', $prod_id ) ) < 30 * DAY_IN_SECONDS ) {
+	$badge_text = 'Mới';
+}
+
+get_header();
 ?>
 
 <main class="shoe-store-page shoe-detail-page">
-	<div class="shoe-detail-container">
+<div class="shoe-detail-container">
 
-		<!-- BREADCRUMBS -->
-		<nav class="shoe-breadcrumbs" aria-label="Đường dẫn">
-			<a href="<?php echo esc_url( home_url( '/' ) ); ?>">Trang chủ</a>
+	<?php wc_print_notices(); ?>
+
+	<!-- BREADCRUMBS -->
+	<nav class="shoe-breadcrumbs" aria-label="Đường dẫn">
+		<a href="<?php echo esc_url( home_url( '/' ) ); ?>">Trang chủ</a>
+		<span class="sep">/</span>
+		<a href="<?php echo esc_url( $shop_url ); ?>">Cửa hàng</a>
+		<?php if ( $cat_term ) : ?>
 			<span class="sep">/</span>
-			<a href="<?php echo esc_url( $shop_url ); ?>">Cửa hàng</a>
-			<span class="sep">/</span>
-			<span class="current"><?php echo esc_html( $title ); ?></span>
-		</nav>
+			<a href="<?php echo esc_url( is_wp_error( $cat_url ) ? $shop_url : $cat_url ); ?>"><?php echo esc_html( $cat_term->name ); ?></a>
+		<?php endif; ?>
+		<span class="sep">/</span>
+		<span class="current"><?php echo esc_html( $title ); ?></span>
+	</nav>
 
-		<?php
-		if ( $is_wc && function_exists( 'wc_print_notices' ) ) {
-			echo '<div class="shoe-wc-notices">';
-			wc_print_notices();
-			echo '</div>';
-		}
-		?>
+	<!-- MAIN PRODUCT CARD -->
+	<div class="shoe-detail-card">
+		<div class="shoe-detail-grid">
 
-		<!-- MAIN PRODUCT CARD -->
-		<div class="shoe-detail-card">
-			<div class="shoe-detail-grid">
-
-				<!-- LEFT COLUMN: IMAGE GALLERY -->
-				<div class="shoe-detail-gallery">
-					<div class="shoe-gallery-main">
-						<span class="shoe-badge">Bán chạy · 2026</span>
-						<img id="shoeMainImage" src="<?php echo esc_url( $images[0] ); ?>" alt="<?php echo esc_attr( $title ); ?>">
-						<span class="shoe-gallery-hint">⌕ Rê chuột hoặc chạm để xem chi tiết</span>
-					</div>
-					<?php if ( count( $images ) > 1 ) : ?>
-						<div class="shoe-gallery-thumbs" id="shoeThumbs">
-							<?php foreach ( $images as $idx => $img_url ) : ?>
-								<button type="button" class="shoe-thumb-btn <?php echo 0 === $idx ? 'is-active' : ''; ?>" data-full="<?php echo esc_url( $img_url ); ?>" aria-label="Xem ảnh <?php echo esc_attr( $idx + 1 ); ?>">
-									<img src="<?php echo esc_url( $img_url ); ?>" alt="Góc chụp <?php echo esc_attr( $idx + 1 ); ?>">
-								</button>
-							<?php endforeach; ?>
-						</div>
+			<!-- LEFT: IMAGE GALLERY -->
+			<div class="shoe-detail-gallery">
+				<div class="shoe-gallery-main">
+					<?php if ( $badge_text ) : ?>
+						<span class="shoe-badge"><?php echo esc_html( $badge_text ); ?></span>
 					<?php endif; ?>
+					<?php if ( ! empty( $images ) ) : ?>
+						<img id="shoeMainImage"
+							src="<?php echo esc_url( $images[0]['full'] ); ?>"
+							alt="<?php echo esc_attr( $images[0]['alt'] ); ?>">
+					<?php else : ?>
+						<img id="shoeMainImage"
+							src="<?php echo esc_url( wc_placeholder_img_src( 'woocommerce_single' ) ); ?>"
+							alt="<?php echo esc_attr( $title ); ?>">
+					<?php endif; ?>
+					<span class="shoe-gallery-hint">⌕ Rê chuột hoặc chạm để xem chi tiết</span>
 				</div>
 
-				<!-- RIGHT COLUMN: PRODUCT SUMMARY & PURCHASE FORM -->
-				<div class="shoe-detail-summary">
-					<p class="shoe-eyebrow">MOTIONLAB · <?php echo esc_html( $category ); ?></p>
-					<h1 class="shoe-detail-title"><?php echo esc_html( $title ); ?></h1>
+				<?php if ( count( $images ) > 1 ) : ?>
+					<div class="shoe-gallery-thumbs" id="shoeThumbs">
+						<?php foreach ( $images as $idx => $img ) : ?>
+							<button type="button"
+								class="shoe-thumb-btn <?php echo 0 === $idx ? 'is-active' : ''; ?>"
+								data-full="<?php echo esc_url( $img['full'] ); ?>"
+								aria-label="Xem ảnh <?php echo esc_attr( $idx + 1 ); ?>">
+								<img src="<?php echo esc_url( $img['medium'] ?: $img['full'] ); ?>" alt="<?php echo esc_attr( $img['alt'] ); ?>">
+							</button>
+						<?php endforeach; ?>
+					</div>
+				<?php endif; ?>
+			</div>
 
-					<div class="shoe-detail-meta-row">
-						<div class="shoe-rating-stars" title="<?php echo esc_attr( $rating_num ); ?>/5 sao">
-							<span class="stars">★★★★★</span>
-							<strong class="score"><?php echo esc_html( $rating_num ); ?></strong>
-							<a href="#shoeTabReviews" class="review-link">(<?php echo esc_html( $review_cnt ); ?> đánh giá)</a>
+			<!-- RIGHT: PRODUCT SUMMARY -->
+			<div class="shoe-detail-summary">
+
+				<p class="shoe-eyebrow">
+					<?php echo esc_html( get_bloginfo( 'name' ) ); ?>
+					<?php if ( $cat_name ) : ?>
+						· <?php echo esc_html( $cat_name ); ?>
+					<?php endif; ?>
+				</p>
+
+				<h1 class="shoe-detail-title"><?php echo esc_html( $title ); ?></h1>
+
+				<div class="shoe-detail-meta-row">
+					<?php if ( $avg_rating > 0 ) : ?>
+						<div class="shoe-rating-stars" title="<?php echo esc_attr( number_format( $avg_rating, 1 ) ); ?>/5 sao">
+							<?php
+							$full  = floor( $avg_rating );
+							$half  = ( $avg_rating - $full ) >= 0.5 ? 1 : 0;
+							$empty = 5 - $full - $half;
+							echo str_repeat( '★', $full );
+							if ( $half ) echo '½';
+							echo str_repeat( '☆', $empty );
+							?>
+							<strong class="score"><?php echo esc_html( number_format( $avg_rating, 1 ) ); ?></strong>
+							<a href="#tabReviews" class="review-link" id="shoeTabReviewsLink">
+								(<?php echo esc_html( $review_cnt ); ?> đánh giá)
+							</a>
 						</div>
 						<span class="meta-dot">·</span>
+					<?php endif; ?>
+
+					<?php if ( $sku ) : ?>
 						<div class="shoe-sku-tag">Mã: <strong><?php echo esc_html( $sku ); ?></strong></div>
 						<span class="meta-dot">·</span>
-						<div class="shoe-stock-badge <?php echo $is_in_stock ? 'in-stock' : 'out-of-stock'; ?>">
-							● <?php echo esc_html( $stock_text ); ?>
-						</div>
-					</div>
+					<?php endif; ?>
 
-					<div class="shoe-detail-price-wrap">
-						<?php echo wp_kses_post( $price_html ); ?>
+					<div class="shoe-stock-badge <?php echo $is_in_stock ? 'in-stock' : 'out-of-stock'; ?>">
+						● <?php echo esc_html( $stock_text ); ?>
 					</div>
+				</div>
 
+				<div class="shoe-detail-price-wrap">
+					<?php echo wp_kses_post( $price_html ); ?>
+				</div>
+
+				<?php if ( $short_desc ) : ?>
 					<div class="shoe-detail-desc">
-						<p><?php echo wp_kses_post( $short_desc ); ?></p>
+						<?php echo wp_kses_post( $short_desc ); ?>
 					</div>
+				<?php endif; ?>
 
-					<!-- SIZE SELECTION -->
+				<!-- SIZE SELECTOR — từ attributes -->
+				<?php if ( ! empty( $size_options ) ) : ?>
 					<div class="shoe-selector-block">
 						<div class="shoe-selector-head">
-							<label class="shoe-selector-label">Chọn kích cỡ (EU / VN):</label>
-							<button type="button" class="shoe-size-guide-link" id="shoeOpenSizeGuide">Bảng đo size chuẩn ↗</button>
+							<label class="shoe-selector-label">Chọn kích cỡ:</label>
+							<button type="button" class="shoe-size-guide-link" id="shoeOpenSizeGuide">Bảng đo size ↗</button>
 						</div>
 						<div class="shoe-size-options" id="shoeSizeOptions">
-							<?php foreach ( array( '38', '39', '40', '41', '42', '43', '44' ) as $s_idx => $size_val ) : ?>
-								<button type="button" class="shoe-size-pill <?php echo '41' === $size_val ? 'is-selected' : ''; ?>" data-size="<?php echo esc_attr( $size_val ); ?>">
-									<?php echo esc_html( $size_val ); ?>
+							<?php foreach ( $size_options as $i => $sz ) : ?>
+								<button type="button"
+									class="shoe-size-pill <?php echo 0 === $i ? 'is-selected' : ''; ?>"
+									data-size="<?php echo esc_attr( $sz ); ?>">
+									<?php echo esc_html( $sz ); ?>
 								</button>
 							<?php endforeach; ?>
 						</div>
 					</div>
+				<?php endif; ?>
 
-					<!-- COLOR SELECTION -->
+				<!-- COLOR SELECTOR — từ attributes -->
+				<?php if ( ! empty( $color_options ) ) : ?>
 					<div class="shoe-selector-block">
-						<label class="shoe-selector-label">Phối màu: <strong id="shoeSelectedColor">Đỏ Carmine / Sunset</strong></label>
+						<label class="shoe-selector-label">
+							Phối màu: <strong id="shoeSelectedColor"><?php echo esc_html( $color_options[0] ); ?></strong>
+						</label>
 						<div class="shoe-color-options" id="shoeColorOptions">
-							<button type="button" class="shoe-color-pill is-selected" data-color="Đỏ Carmine / Sunset" title="Đỏ Carmine / Sunset">
-								<span class="swatch" style="background:#d92525;"></span>
-								<span class="name">Đỏ Sunset</span>
-							</button>
-							<button type="button" class="shoe-color-pill" data-color="Trắng Pearl / Clean" title="Trắng Pearl / Clean">
-								<span class="swatch" style="background:#f4f4f4; border:1px solid #ccc;"></span>
-								<span class="name">Trắng Pearl</span>
-							</button>
-							<button type="button" class="shoe-color-pill" data-color="Đen Obsidian / Stealth" title="Đen Obsidian / Stealth">
-								<span class="swatch" style="background:#1a1a1a;"></span>
-								<span class="name">Đen Obsidian</span>
-							</button>
-						</div>
-					</div>
-
-					<!-- PURCHASE ACTIONS -->
-					<?php if ( $product && function_exists( 'woocommerce_template_single_add_to_cart' ) ) : ?>
-						<div class="shoe-wc-add-to-cart-wrapper">
-							<?php woocommerce_template_single_add_to_cart(); ?>
-						</div>
-					<?php else : ?>
-						<form class="shoe-detail-actions-form" id="shoeDetailDemoForm" onsubmit="return false;">
-							<div class="shoe-action-controls">
-								<div class="shoe-quantity-stepper">
-									<button type="button" class="qty-btn" id="qtyMinus" aria-label="Giảm">-</button>
-									<input type="number" id="shoeQtyInput" value="1" min="1" max="99" aria-label="Số lượng">
-									<button type="button" class="qty-btn" id="qtyPlus" aria-label="Tăng">+</button>
-								</div>
-								<button type="button" class="shoe-button shoe-button-cart" id="shoeBtnAddToCart">
-									Thêm vào giỏ hàng <span>+</span>
+							<?php foreach ( $color_options as $i => $col ) : ?>
+								<button type="button"
+									class="shoe-color-pill <?php echo 0 === $i ? 'is-selected' : ''; ?>"
+									data-color="<?php echo esc_attr( $col ); ?>"
+									title="<?php echo esc_attr( $col ); ?>">
+									<span class="name"><?php echo esc_html( $col ); ?></span>
 								</button>
-							</div>
-							<a href="<?php echo esc_url( $checkout_url ); ?>" class="shoe-button shoe-button-buy-now">
-								Mua ngay (Hỗ trợ SePay QR) <span>→</span>
-							</a>
-						</form>
-					<?php endif; ?>
-
-					<!-- STORE COMMITMENTS / SEPAY PERKS -->
-					<div class="shoe-detail-perks">
-						<div class="shoe-perk-item">
-							
-							<div>
-								<strong>Miễn phí giao hàng</strong>
-								<span>Đơn từ 1.500.000₫ toàn quốc, nhận hàng sau 2-4 ngày</span>
-							</div>
-						</div>
-						<div class="shoe-perk-item">
-						
-							<div>
-								<strong>Đổi trả 30 ngày dễ dàng</strong>
-								<span>Miễn phí đổi kích thước tận nơi nếu không vừa chân</span>
-							</div>
-						</div>
-						<div class="shoe-perk-item">
-						
-							<div>
-								<strong>Cam kết chính hãng 100%</strong>
-								<span>Bảo hành keo chỉ 12 tháng tại hệ thống MotionLab</span>
-							</div>
-						</div>
-						<div class="shoe-perk-item">
-						
-							<div>
-								<strong>Thanh toán VietQR / SePay tức thì</strong>
-								<span>Quét mã QR chuyển khoản tự động, xác nhận đơn trong 3 giây</span>
-							</div>
+							<?php endforeach; ?>
 						</div>
 					</div>
+				<?php endif; ?>
 
+				<!-- ADD TO CART — WooCommerce native -->
+				<div class="shoe-wc-add-to-cart-wrapper">
+					<?php
+					// Setup global post for WooCommerce hooks
+					global $post;
+					$post = get_post( $prod_id );
+					setup_postdata( $post );
+					woocommerce_template_single_add_to_cart();
+					wp_reset_postdata();
+					?>
 				</div>
+
+				<!-- MUA NGAY — Buy Now shortcut -->
+				<?php if ( $is_in_stock ) : ?>
+					<a href="<?php echo esc_url( add_query_arg( 'buy_now', $prod_id, $checkout_url ) ); ?>"
+					   class="shoe-button shoe-button-buy-now">
+						Mua ngay · Thanh toán SePay QR <span>→</span>
+					</a>
+				<?php endif; ?>
+
+				<!-- TRUST PERKS — cố định, thông tin chính sách cửa hàng -->
+				<div class="shoe-detail-perks">
+					<div class="shoe-perk-item">
+						<span class="icon">🚚</span>
+						<div>
+							<strong>Miễn phí giao hàng</strong>
+							<span>Đơn từ 1.500.000₫ toàn quốc, nhận hàng 2–4 ngày</span>
+						</div>
+					</div>
+					<div class="shoe-perk-item">
+						<span class="icon">🔄</span>
+						<div>
+							<strong>Đổi trả 30 ngày</strong>
+							<span>Miễn phí đổi size nếu không vừa chân</span>
+						</div>
+					</div>
+					<div class="shoe-perk-item">
+						<span class="icon">🛡️</span>
+						<div>
+							<strong>Chính hãng 100%</strong>
+							<span>Bảo hành keo chỉ 12 tháng toàn hệ thống</span>
+						</div>
+					</div>
+					<div class="shoe-perk-item">
+						<span class="icon">⚡</span>
+						<div>
+							<strong>VietQR / SePay tức thì</strong>
+							<span>Xác nhận đơn hàng tự động trong vài giây</span>
+						</div>
+					</div>
+				</div>
+
+			</div><!-- /.shoe-detail-summary -->
+		</div><!-- /.shoe-detail-grid -->
+	</div><!-- /.shoe-detail-card -->
+
+	<!-- TABS -->
+	<div class="shoe-detail-tabs-section" id="shoeDetailTabs">
+		<div class="shoe-tabs-nav">
+			<button type="button" class="shoe-tab-btn is-active" data-tab="tabDesc">Mô tả sản phẩm</button>
+			<?php if ( ! empty( $spec_rows ) ) : ?>
+				<button type="button" class="shoe-tab-btn" data-tab="tabSpecs">Thông số kỹ thuật</button>
+			<?php endif; ?>
+			<button type="button" class="shoe-tab-btn" data-tab="tabSize">Bảng chọn size</button>
+			<button type="button" class="shoe-tab-btn" data-tab="tabReviews" id="shoeTabReviews">
+				Đánh giá<?php if ( $review_cnt > 0 ) : ?> (<?php echo esc_html( $review_cnt ); ?>)<?php endif; ?>
+			</button>
+		</div>
+
+		<!-- TAB: Mô tả -->
+		<div class="shoe-tab-panel is-active" id="tabDesc">
+			<div class="shoe-desc-content">
+				<?php if ( $long_desc ) : ?>
+					<?php echo wp_kses_post( apply_filters( 'the_content', $long_desc ) ); ?>
+				<?php elseif ( $short_desc ) : ?>
+					<?php echo wp_kses_post( $short_desc ); ?>
+				<?php else : ?>
+					<p>Chưa có mô tả chi tiết cho sản phẩm này.</p>
+				<?php endif; ?>
 			</div>
 		</div>
 
-		<!-- TABS SECTION -->
-		<div class="shoe-detail-tabs-section" id="shoeDetailTabs">
-			<div class="shoe-tabs-nav">
-				<button type="button" class="shoe-tab-btn is-active" data-tab="tabDesc">Mô tả sản phẩm</button>
-				<button type="button" class="shoe-tab-btn" data-tab="tabSpecs">Thông số kỹ thuật</button>
-				<button type="button" class="shoe-tab-btn" data-tab="tabSize">Bảng chọn size</button>
-				<button type="button" class="shoe-tab-btn" data-tab="tabReviews" id="shoeTabReviews">Đánh giá (<?php echo esc_html( $review_cnt ); ?>)</button>
-			</div>
-
-			<!-- TAB 1: DESCRIPTION -->
-			<div class="shoe-tab-panel is-active" id="tabDesc">
-				<div class="shoe-desc-content">
-					<h3>Công nghệ đột phá trên từng bước chân</h3>
-					<p>Dòng giày <strong><?php echo esc_html( $title ); ?></strong> được phát triển nhằm tái định nghĩa trải nghiệm vận động hằng ngày của bạn. Bằng việc kết hợp hệ thống đệm hoàn năng lượng thế hệ mới cùng form ôm chân chuẩn công thái học, đôi giày giúp phân tán lực tác động từ mặt đường, giải tỏa áp lực lên khớp gối và cổ chân.</p>
-					
-					<div class="shoe-features-grid">
-						<div class="shoe-feature-card">
-							<div class="feature-icon">⚡</div>
-							<h4>Bộ đệm bọt Eva Nitro</h4>
-							<p>Được nén dưới áp suất cao giúp tăng 75% khả năng đàn hồi và giảm 30% trọng lượng so với đế cao su thông thường.</p>
-						</div>
-						<div class="shoe-feature-card">
-							<div class="feature-icon">🌬️</div>
-							<h4>Upper dệt PrimeKnit 3D</h4>
-							<p>Cấu trúc sợi dệt liền mạch thoáng khí 360 độ, co giãn linh hoạt theo cử động tự nhiên của mu bàn chân.</p>
-						</div>
-						<div class="shoe-feature-card">
-							<div class="feature-icon">🛡️</div>
-							<h4>Đế ngoài bám đường mọi thời tiết</h4>
-							<p>Vân rãnh định hướng hình học bằng cao su lưu hóa chống mài mòn, bám chắc kể cả khi chạy trên bề mặt ướt.</p>
-						</div>
-					</div>
-
-					<p>Dù bạn sử dụng để chinh phục những cung chạy bộ 5km - 21km, tập gym cường độ cao hay dạo phố phong cách thường nhật, MotionLab luôn đồng hành cùng bạn với cảm giác tự tin và thanh thoát nhất.</p>
-				</div>
-			</div>
-
-			<!-- TAB 2: SPECS -->
+		<!-- TAB: Thông số -->
+		<?php if ( ! empty( $spec_rows ) ) : ?>
 			<div class="shoe-tab-panel" id="tabSpecs">
 				<table class="shoe-specs-table">
 					<tbody>
-						<tr><th>Dòng sản phẩm</th><td>Performance Running & Athleisure Lifestyle</td></tr>
-						<tr><th>Trọng lượng</th><td>245 gram (Cỡ chuẩn EU 41)</td></tr>
-						<tr><th>Độ dốc gót - mũi (Drop)</th><td>8 mm (Gót 32mm / Mũi 24mm)</td></tr>
-						<tr><th>Kiểu vòm bàn chân</th><td>Neutral (Bình thường / Vòm cao trung bình)</td></tr>
-						<tr><th>Mặt đường khuyên dùng</th><td>Đường nhựa, đường chạy công viên, máy chạy bộ</td></tr>
-						<tr><th>Chất liệu thân trên (Upper)</th><td>Vải dệt tái chế kỹ thuật cao (Engineered Mesh)</td></tr>
-						<tr><th>Chất liệu đế lót</th><td>Ortholite kháng khuẩn khử mùi, tháo rời vệ sinh được</td></tr>
-						<tr><th>Hỗ trợ thanh toán</th><td>COD, Thẻ ngân hàng, Quét mã QR SePay tự động</td></tr>
+						<?php foreach ( $spec_rows as $label => $value ) : ?>
+							<tr>
+								<th><?php echo esc_html( $label ); ?></th>
+								<td><?php echo wp_kses_post( $value ); ?></td>
+							</tr>
+						<?php endforeach; ?>
 					</tbody>
 				</table>
 			</div>
+		<?php endif; ?>
 
-			<!-- TAB 3: SIZE GUIDE -->
-			<div class="shoe-tab-panel" id="tabSize">
-				<div class="shoe-size-guide-content">
-					<h3>Bảng quy đổi kích thước giày chuẩn quốc tế</h3>
-					<p>Để chọn được đôi giày vừa vặn nhất, bạn nên đo chiều dài bàn chân vào buổi chiều hoặc tối vì bàn chân có xu hướng giãn nở nhẹ sau ngày dài vận động.</p>
-					
-					<div class="shoe-table-responsive">
-						<table class="shoe-size-table">
-							<thead>
-								<tr>
-									<th>Chiều dài chân (cm)</th>
-									<th>Size EU / VN</th>
-									<th>Size US Nam</th>
-									<th>Size US Nữ</th>
-									<th>Size UK</th>
-								</tr>
-							</thead>
-							<tbody>
-								<tr><td>23.5 - 24.0 cm</td><td><strong>38</strong></td><td>6.0</td><td>7.5</td><td>5.5</td></tr>
-								<tr><td>24.1 - 24.5 cm</td><td><strong>39</strong></td><td>6.5</td><td>8.0</td><td>6.0</td></tr>
-								<tr><td>24.6 - 25.0 cm</td><td><strong>40</strong></td><td>7.0</td><td>8.5</td><td>6.5</td></tr>
-								<tr class="highlight"><td>25.1 - 25.5 cm</td><td><strong>41</strong></td><td>8.0</td><td>9.5</td><td>7.5</td></tr>
-								<tr><td>25.6 - 26.0 cm</td><td><strong>42</strong></td><td>8.5</td><td>10.0</td><td>8.0</td></tr>
-								<tr><td>26.1 - 26.5 cm</td><td><strong>43</strong></td><td>9.5</td><td>11.0</td><td>9.0</td></tr>
-								<tr><td>26.6 - 27.0 cm</td><td><strong>44</strong></td><td>10.0</td><td>11.5</td><td>9.5</td></tr>
-							</tbody>
-						</table>
-					</div>
-
-					<div class="shoe-measure-steps">
-						<h4>3 Bước đo chân tại nhà:</h4>
-						<ol>
-							<li><strong>Đặt chân lên giấy:</strong> Đặt tờ giấy trắng A4 áp sát chân tường, đứng thẳng tự nhiên và chạm gót vào tường.</li>
-							<li><strong>Vạch dấu:</strong> Dùng bút chì dựng đứng vuông góc, đánh dấu vị trí dài nhất của đầu ngón chân.</li>
-							<li><strong>Đo khoảng cách:</strong> Dùng thước đo từ cạnh giấy chạm tường đến vạch đã kẻ, cộng thêm 0.5cm nếu bạn thích mang tất dày.</li>
-						</ol>
-					</div>
+		<!-- TAB: Bảng size -->
+		<div class="shoe-tab-panel" id="tabSize">
+			<div class="shoe-size-guide-content">
+				<?php
+				// $size_guide_page đã được fetch ở đầu file (section 9)
+				if ( $size_guide_page && $size_guide_page->post_content ) :
+					echo wp_kses_post( apply_filters( 'the_content', $size_guide_page->post_content ) );
+				else :
+				?>
+				<h3>Bảng quy đổi kích thước giày chuẩn quốc tế</h3>
+				<p>Để chọn được đôi giày vừa vặn, hãy đo chiều dài bàn chân vào buổi chiều hoặc tối.</p>
+				<div class="shoe-table-responsive">
+					<table class="shoe-size-table">
+						<thead>
+							<tr>
+								<th>Chiều dài chân (cm)</th>
+								<th>Size EU / VN</th>
+								<th>Size US Nam</th>
+								<th>Size US Nữ</th>
+								<th>Size UK</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr><td>23.5 – 24.0 cm</td><td><strong>38</strong></td><td>6.0</td><td>7.5</td><td>5.5</td></tr>
+							<tr><td>24.1 – 24.5 cm</td><td><strong>39</strong></td><td>6.5</td><td>8.0</td><td>6.0</td></tr>
+							<tr><td>24.6 – 25.0 cm</td><td><strong>40</strong></td><td>7.0</td><td>8.5</td><td>6.5</td></tr>
+							<tr class="highlight"><td>25.1 – 25.5 cm</td><td><strong>41</strong></td><td>8.0</td><td>9.5</td><td>7.5</td></tr>
+							<tr><td>25.6 – 26.0 cm</td><td><strong>42</strong></td><td>8.5</td><td>10.0</td><td>8.0</td></tr>
+							<tr><td>26.1 – 26.5 cm</td><td><strong>43</strong></td><td>9.5</td><td>11.0</td><td>9.0</td></tr>
+							<tr><td>26.6 – 27.0 cm</td><td><strong>44</strong></td><td>10.0</td><td>11.5</td><td>9.5</td></tr>
+						</tbody>
+					</table>
 				</div>
-			</div>
-
-			<!-- TAB 4: REVIEWS -->
-			<div class="shoe-tab-panel" id="tabReviews">
-				<div class="shoe-reviews-wrap">
-					<div class="shoe-reviews-summary">
-						<div class="score-box">
-							<span class="big-score"><?php echo esc_html( $rating_num ); ?></span>
-							<span class="stars">★★★★★</span>
-							<span class="count">Dựa trên <?php echo esc_html( $review_cnt ); ?> đánh giá xác thực</span>
-						</div>
-						<div class="score-bars">
-							<div class="bar-row"><span>5 sao</span><div class="bar-bg"><div class="bar-fill" style="width: 86%;"></div></div><span>86%</span></div>
-							<div class="bar-row"><span>4 sao</span><div class="bar-bg"><div class="bar-fill" style="width: 11%;"></div></div><span>11%</span></div>
-							<div class="bar-row"><span>3 sao</span><div class="bar-bg"><div class="bar-fill" style="width: 3%;"></div></div><span>3%</span></div>
-							<div class="bar-row"><span>2 sao</span><div class="bar-bg"><div class="bar-fill" style="width: 0%;"></div></div><span>0%</span></div>
-							<div class="bar-row"><span>1 sao</span><div class="bar-bg"><div class="bar-fill" style="width: 0%;"></div></div><span>0%</span></div>
-						</div>
-					</div>
-
-					<div class="shoe-reviews-list">
-						<?php if ( ! empty( $real_reviews ) ) : ?>
-							<?php foreach ( $real_reviews as $rev ) :
-								$rev_id     = $rev->comment_ID;
-								$author     = get_comment_author( $rev_id );
-								$rating_val = (int) get_comment_meta( $rev_id, 'rating', true );
-								if ( $rating_val < 1 ) { $rating_val = 5; }
-								$stars_str  = str_repeat( '★', $rating_val ) . str_repeat( '☆', 5 - $rating_val );
-								$date_str   = get_comment_date( 'd/m/Y', $rev_id );
-								$content    = get_comment_text( $rev_id );
-								$verified   = function_exists( 'wc_customer_bought_product' ) && $product ? wc_customer_bought_product( $rev->comment_author_email, $rev->user_id, $product->get_id() ) : false;
-								?>
-								<div class="shoe-review-item">
-									<div class="review-head">
-										<strong><?php echo esc_html( $author ); ?></strong>
-										<?php if ( $verified ) : ?>
-											<span class="verified">✓ Đã mua hàng</span>
-										<?php endif; ?>
-										<span class="stars"><?php echo esc_html( $stars_str ); ?></span>
-										<span class="date"><?php echo esc_html( $date_str ); ?></span>
-									</div>
-									<p><?php echo wp_kses_post( $content ); ?></p>
-								</div>
-							<?php endforeach; ?>
-						<?php else : ?>
-							<div class="shoe-review-item">
-								<div class="review-head">
-									<strong>Trần Quang Minh</strong>
-									<span class="verified">✓ Đã mua hàng (Size 41)</span>
-									<span class="stars">★★★★★</span>
-									<span class="date">3 ngày trước</span>
-								</div>
-								<p>Giày đệm rất êm và nhẹ hơn mình nghĩ. Đã chạy thử 8km vòng hồ Tây buổi sáng, không bị cọ xát gót hay mỏi gan bàn chân. Phối màu đỏ bên ngoài đẹp hơn ảnh chụp.</p>
-							</div>
-							<div class="shoe-review-item">
-								<div class="review-head">
-									<strong>Lê Thuỳ Dung</strong>
-									<span class="verified">✓ Đã mua hàng (Size 39)</span>
-									<span class="stars">★★★★★</span>
-									<span class="date">1 tuần trước</span>
-								</div>
-								<p>Form giày ôm vừa vặn, đế bám sàn tốt. Nhân viên tư vấn nhiệt tình, giao hàng từ TP.HCM ra Hà Nội chỉ mất 2 ngày. Rất hài lòng!</p>
-							</div>
-							<div class="shoe-review-item">
-								<div class="review-head">
-									<strong>Nguyễn Hoàng Nam</strong>
-									<span class="verified">✓ Đã mua hàng (Size 42)</span>
-									<span class="stars">★★★★★</span>
-									<span class="date">2 tuần trước</span>
-								</div>
-								<p>Quét mã VietQR SePay thanh toán tự động trong 3 giây là đơn hàng xác nhận ngay, rất tiện lợi và an toàn. Giày đi bộ cả ngày làm việc vẫn thoải mái.</p>
-							</div>
-						<?php endif; ?>
-					</div>
-
-					<!-- REVIEW FORM -->
-					<div class="shoe-review-form-box">
-						<h4>Gửi đánh giá của bạn</h4>
-						<?php if ( $product && comments_open( $product->get_id() ) ) : ?>
-							<form action="<?php echo esc_url( site_url( '/wp-comments-post.php' ) ); ?>" method="post">
-								<input type="hidden" name="comment_post_ID" value="<?php echo esc_attr( $product->get_id() ); ?>">
-								<div class="form-row">
-									<input type="text" name="author" placeholder="Họ và tên của bạn *" required>
-									<input type="email" name="email" placeholder="Địa chỉ email *" required>
-								</div>
-								<div class="form-row">
-									<select name="rating" aria-label="Đánh giá số sao" required>
-										<option value="5">★★★★★ - Tuyệt vời (5/5 sao)</option>
-										<option value="4">★★★★☆ - Hài lòng (4/5 sao)</option>
-										<option value="3">★★★☆☆ - Bình thường (3/5 sao)</option>
-										<option value="2">★★☆☆☆ - Chưa tốt (2/5 sao)</option>
-										<option value="1">★☆☆☆☆ - Thất vọng (1/5 sao)</option>
-									</select>
-								</div>
-								<div class="form-row">
-									<textarea name="comment" rows="4" placeholder="Chia sẻ cảm nhận chi tiết của bạn về kích thước, độ êm, phong cách và dịch vụ giao hàng..." required></textarea>
-								</div>
-								<button type="submit" class="shoe-button shoe-button-dark">Gửi nhận xét ngay　→</button>
-							</form>
-						<?php else : ?>
-							<form onsubmit="event.preventDefault(); alert('Cảm ơn bạn đã gửi đánh giá! Nhận xét sẽ được kiểm duyệt và hiển thị sớm nhất.'); this.reset();">
-								<div class="form-row">
-									<input type="text" placeholder="Họ và tên của bạn *" required>
-									<input type="email" placeholder="Địa chỉ email *" required>
-								</div>
-								<div class="form-row">
-									<select aria-label="Đánh giá số sao" required>
-										<option value="5">★★★★★ - Tuyệt vời (5/5 sao)</option>
-										<option value="4">★★★★☆ - Hài lòng (4/5 sao)</option>
-										<option value="3">★★★☆☆ - Bình thường (3/5 sao)</option>
-										<option value="2">★★☆☆☆ - Chưa tốt (2/5 sao)</option>
-										<option value="1">★☆☆☆☆ - Thất vọng (1/5 sao)</option>
-									</select>
-								</div>
-								<div class="form-row">
-									<textarea rows="4" placeholder="Chia sẻ cảm nhận chi tiết của bạn về kích thước, độ êm, phong cách và dịch vụ giao hàng..." required></textarea>
-								</div>
-								<button type="submit" class="shoe-button shoe-button-dark">Gửi nhận xét ngay　→</button>
-							</form>
-						<?php endif; ?>
-					</div>
-
+				<div class="shoe-measure-steps">
+					<h4>Cách đo chân tại nhà:</h4>
+					<ol>
+						<li>Đặt chân lên tờ giấy A4 áp sát tường, đứng thẳng tự nhiên.</li>
+						<li>Dùng bút đánh dấu điểm dài nhất của đầu ngón chân.</li>
+						<li>Đo từ mép giấy đến vạch, cộng thêm 0.5 cm nếu mang tất dày.</li>
+					</ol>
 				</div>
+				<?php endif; ?>
 			</div>
 		</div>
 
-		<!-- RELATED PRODUCTS (DỮ LIỆU THẬT TỪ WOOCOMMERCE) -->
+		<!-- TAB: Đánh giá -->
+		<div class="shoe-tab-panel" id="tabReviews">
+			<div class="shoe-reviews-wrap">
+
+				<!-- Tổng quan đánh giá -->
+				<?php if ( $avg_rating > 0 ) : ?>
+					<div class="shoe-reviews-summary">
+						<div class="score-box">
+							<span class="big-score"><?php echo esc_html( number_format( $avg_rating, 1 ) ); ?></span>
+							<span class="stars">
+								<?php
+								$f = floor( $avg_rating );
+								$h = ( $avg_rating - $f ) >= 0.5 ? 1 : 0;
+								$e = 5 - $f - $h;
+								echo str_repeat( '★', $f ) . ( $h ? '½' : '' ) . str_repeat( '☆', $e );
+								?>
+							</span>
+							<span class="count">Dựa trên <?php echo esc_html( $review_cnt ); ?> đánh giá</span>
+						</div>
+						<div class="score-bars">
+							<?php foreach ( array( 5, 4, 3, 2, 1 ) as $star ) :
+								$cnt = $rating_counts[ $star ];
+								$pct = $review_cnt > 0 ? round( ( $cnt / $review_cnt ) * 100 ) : 0;
+							?>
+								<div class="bar-row">
+									<span><?php echo esc_html( $star ); ?> sao</span>
+									<div class="bar-bg"><div class="bar-fill" style="width: <?php echo esc_attr( $pct ); ?>%;"></div></div>
+									<span><?php echo esc_html( $pct ); ?>%</span>
+								</div>
+							<?php endforeach; ?>
+						</div>
+					</div>
+				<?php endif; ?>
+
+				<!-- Danh sách bình luận thật -->
+				<?php if ( ! empty( $real_reviews ) ) : ?>
+					<div class="shoe-reviews-list">
+						<?php foreach ( $real_reviews as $rv ) :
+							$rv_id      = $rv->comment_ID;
+							$rv_author  = get_comment_author( $rv_id );
+							$rv_rating  = (int) get_comment_meta( $rv_id, 'rating', true );
+							$rv_stars   = $rv_rating > 0 ? ( str_repeat( '★', $rv_rating ) . str_repeat( '☆', 5 - $rv_rating ) ) : '';
+							$rv_date    = get_comment_date( 'd/m/Y', $rv_id );
+							$rv_content = get_comment_text( $rv_id );
+							$rv_verified = function_exists( 'wc_customer_bought_product' )
+								? wc_customer_bought_product( $rv->comment_author_email, (int) $rv->user_id, $prod_id )
+								: false;
+						?>
+							<div class="shoe-review-item">
+								<div class="review-head">
+									<strong><?php echo esc_html( $rv_author ); ?></strong>
+									<?php if ( $rv_verified ) : ?>
+										<span class="verified">✓ Đã mua hàng</span>
+									<?php endif; ?>
+									<?php if ( $rv_stars ) : ?>
+										<span class="stars"><?php echo esc_html( $rv_stars ); ?></span>
+									<?php endif; ?>
+									<span class="date"><?php echo esc_html( $rv_date ); ?></span>
+								</div>
+								<p><?php echo wp_kses_post( $rv_content ); ?></p>
+							</div>
+						<?php endforeach; ?>
+					</div>
+				<?php else : ?>
+					<p class="shoe-no-reviews">Chưa có đánh giá nào. Hãy là người đầu tiên chia sẻ cảm nhận!</p>
+				<?php endif; ?>
+
+				<!-- Form gửi đánh giá — WooCommerce native -->
+				<?php if ( comments_open( $prod_id ) ) : ?>
+					<div class="shoe-review-form-box">
+						<h4>Gửi đánh giá của bạn</h4>
+						<?php
+						$commenter = wp_get_current_commenter();
+						$user      = wp_get_current_user();
+						?>
+						<form action="<?php echo esc_url( site_url( '/wp-comments-post.php' ) ); ?>" method="post" id="shoeReviewForm">
+							<input type="hidden" name="comment_post_ID" value="<?php echo esc_attr( $prod_id ); ?>">
+							<input type="hidden" name="comment_type" value="review">
+							<?php wp_nonce_field( 'woocommerce-comment-rating', 'woo_comment_nonce', false ); ?>
+
+							<div class="form-row">
+								<?php if ( ! $user->exists() ) : ?>
+									<input type="text" name="author" value="<?php echo esc_attr( $commenter['comment_author'] ); ?>" placeholder="Họ và tên *" required>
+									<input type="email" name="email" value="<?php echo esc_attr( $commenter['comment_author_email'] ); ?>" placeholder="Email *" required>
+								<?php else : ?>
+									<p class="shoe-logged-in-as">
+										<?php printf( 'Đang đánh giá với tên <strong>%s</strong>', esc_html( $user->display_name ) ); ?>
+									</p>
+								<?php endif; ?>
+							</div>
+
+							<div class="form-row">
+								<select name="rating" aria-label="Đánh giá số sao" required>
+									<option value="">— Chọn số sao —</option>
+									<option value="5">★★★★★ Tuyệt vời (5 sao)</option>
+									<option value="4">★★★★☆ Hài lòng (4 sao)</option>
+									<option value="3">★★★☆☆ Bình thường (3 sao)</option>
+									<option value="2">★★☆☆☆ Chưa tốt (2 sao)</option>
+									<option value="1">★☆☆☆☆ Thất vọng (1 sao)</option>
+								</select>
+							</div>
+
+							<div class="form-row">
+								<textarea name="comment" rows="4" placeholder="Chia sẻ cảm nhận về sản phẩm..." required></textarea>
+							</div>
+
+							<button type="submit" class="shoe-button shoe-button-dark">Gửi đánh giá →</button>
+						</form>
+					</div>
+				<?php endif; ?>
+
+			</div>
+		</div><!-- /#tabReviews -->
+	</div><!-- /.shoe-detail-tabs-section -->
+
+	<!-- SẢN PHẨM LIÊN QUAN — dữ liệu thật -->
+	<?php if ( ! empty( $related_products ) ) : ?>
 		<section class="shoe-section shoe-detail-related">
 			<div class="shoe-section-head">
 				<h2>Có thể bạn cũng thích</h2>
-				<a class="shoe-text-link" href="<?php echo esc_url( $shop_url ); ?>">Xem tất cả sản phẩm　→</a>
+				<a class="shoe-text-link" href="<?php echo esc_url( $shop_url ); ?>">Xem tất cả →</a>
 			</div>
 			<div class="shoe-product-grid">
-				<?php if ( ! empty( $related_products_list ) ) : ?>
-					<?php foreach ( $related_products_list as $rel_p ) :
-						$r_id      = $rel_p->get_id();
-						$r_title   = $rel_p->get_name();
-						$r_url     = $rel_p->get_permalink();
-						$r_price   = $rel_p->get_price_html();
-						$r_img_id  = $rel_p->get_image_id();
-						$r_img_url = $r_img_id ? wp_get_attachment_image_url( $r_img_id, 'medium_large' ) : 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=650&q=80';
+				<?php foreach ( $related_products as $rel_p ) :
+					$r_id      = $rel_p->get_id();
+					$r_title   = $rel_p->get_name();
+					$r_url     = $rel_p->get_permalink();
+					$r_price   = $rel_p->get_price_html();
+					$r_img_id  = $rel_p->get_image_id();
+					$r_img_url = $r_img_id
+						? wp_get_attachment_image_url( $r_img_id, 'woocommerce_thumbnail' )
+						: wc_placeholder_img_src( 'woocommerce_thumbnail' );
+					$r_img_alt = $r_img_id
+						? trim( wp_strip_all_tags( get_post_meta( $r_img_id, '_wp_attachment_image_alt', true ) ) )
+						: $r_title;
 
-						$r_terms    = get_the_terms( $r_id, 'product_cat' );
-						$r_cat_name = ( ! empty( $r_terms ) && ! is_wp_error( $r_terms ) ) ? $r_terms[0]->name : 'Giày thể thao · Nam/Nữ';
+					$r_cats    = get_the_terms( $r_id, 'product_cat' );
+					$r_cats    = ( ! empty( $r_cats ) && ! is_wp_error( $r_cats ) ) ? array_filter( $r_cats, fn( $t ) => $t->slug !== 'uncategorized' ) : array();
+					$r_cat     = ! empty( $r_cats ) ? reset( $r_cats ) : null;
 
-						$badge_html = '';
-						if ( $rel_p->is_on_sale() ) {
-							$reg  = (float) $rel_p->get_regular_price();
-							$sale = (float) $rel_p->get_sale_price();
-							if ( $reg > 0 && $sale > 0 && $reg > $sale ) {
-								$pct        = round( ( ( $reg - $sale ) / $reg ) * 100 );
-								$badge_html = '<span class="shoe-badge">-' . esc_html( $pct ) . '%</span>';
-							} else {
-								$badge_html = '<span class="shoe-badge">Giảm giá</span>';
-							}
-						} elseif ( $rel_p->is_featured() ) {
-							$badge_html = '<span class="shoe-badge">Nổi bật</span>';
-						} elseif ( ( time() - get_the_time( 'U', $r_id ) ) < ( 30 * DAY_IN_SECONDS ) ) {
-							$badge_html = '<span class="shoe-badge">Mới</span>';
-						}
-						?>
-						<a class="shoe-product" href="<?php echo esc_url( $r_url ); ?>">
-							<div class="shoe-product-image">
-								<?php echo $badge_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
-								<img src="<?php echo esc_url( $r_img_url ); ?>" alt="<?php echo esc_attr( $r_title ); ?>">
-							</div>
-							<div class="shoe-product-info">
-								<div class="shoe-product-title"><?php echo esc_html( $r_title ); ?></div>
-								<div class="shoe-product-type"><?php echo esc_html( $r_cat_name ); ?></div>
-								<div class="shoe-price"><?php echo wp_kses_post( $r_price ); ?></div>
-							</div>
-						</a>
-					<?php endforeach; ?>
-				<?php else : ?>
-					<a class="shoe-product" href="<?php echo esc_url( $shop_url ); ?>">
+					$r_badge = '';
+					if ( $rel_p->is_on_sale() ) {
+						$reg  = (float) $rel_p->get_regular_price();
+						$sale = (float) $rel_p->get_sale_price();
+						$pct  = ( $reg > 0 && $sale > 0 ) ? round( ( ( $reg - $sale ) / $reg ) * 100 ) : 0;
+						$r_badge = $pct ? '<span class="shoe-badge">-' . esc_html( $pct ) . '%</span>' : '<span class="shoe-badge">Sale</span>';
+					} elseif ( $rel_p->is_featured() ) {
+						$r_badge = '<span class="shoe-badge">Nổi bật</span>';
+					} elseif ( ( time() - get_the_time( 'U', $r_id ) ) < 30 * DAY_IN_SECONDS ) {
+						$r_badge = '<span class="shoe-badge">Mới</span>';
+					}
+				?>
+					<a class="shoe-product" href="<?php echo esc_url( $r_url ); ?>">
 						<div class="shoe-product-image">
-							<span class="shoe-badge">Bán chạy</span>
-							<img src="https://images.unsplash.com/photo-1495555961986-6d4c1ecb7be3?auto=format&fit=crop&w=650&q=80" alt="Daily Court Classic">
+							<?php echo $r_badge; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+							<img src="<?php echo esc_url( $r_img_url ); ?>" alt="<?php echo esc_attr( $r_img_alt ); ?>">
 						</div>
 						<div class="shoe-product-info">
-							<div class="shoe-product-title">Daily Court Classic</div>
-							<div class="shoe-product-type">Giày lifestyle · Unisex</div>
-							<div class="shoe-price">1.590.000₫</div>
+							<div class="shoe-product-title"><?php echo esc_html( $r_title ); ?></div>
+							<?php if ( $r_cat ) : ?>
+								<div class="shoe-product-type"><?php echo esc_html( $r_cat->name ); ?></div>
+							<?php endif; ?>
+							<div class="shoe-price"><?php echo wp_kses_post( $r_price ); ?></div>
 						</div>
 					</a>
-					<a class="shoe-product" href="<?php echo esc_url( $shop_url ); ?>">
-						<div class="shoe-product-image">
-							<img src="https://images.unsplash.com/photo-1460353581641-37baddab0fa2?auto=format&fit=crop&w=650&q=80" alt="Aero Pace Pro">
-						</div>
-						<div class="shoe-product-info">
-							<div class="shoe-product-title">Aero Pace Pro</div>
-							<div class="shoe-product-type">Giày chạy marathon · Nam/Nữ</div>
-							<div class="shoe-price">2.490.000₫</div>
-						</div>
-					</a>
-					<a class="shoe-product" href="<?php echo esc_url( $shop_url ); ?>">
-						<div class="shoe-product-image">
-							<span class="shoe-badge">Bộ sưu tập mới</span>
-							<img src="https://images.unsplash.com/photo-1552346154-21d32810aba3?auto=format&fit=crop&w=650&q=80" alt="Street Form 02">
-						</div>
-						<div class="shoe-product-info">
-							<div class="shoe-product-title">Street Form 02</div>
-							<div class="shoe-product-type">Giày lifestyle đường phố</div>
-							<div class="shoe-price">1.790.000₫</div>
-						</div>
-					</a>
-					<a class="shoe-product" href="<?php echo esc_url( $shop_url ); ?>">
-						<div class="shoe-product-image">
-							<img src="https://images.unsplash.com/photo-1584735935682-2f2b69dff9d2?auto=format&fit=crop&w=650&q=80" alt="Glide Flow Neon">
-						</div>
-						<div class="shoe-product-info">
-							<div class="shoe-product-title">Glide Flow Neon</div>
-							<div class="shoe-product-type">Giày tập luyện đa năng</div>
-							<div class="shoe-price">1.650.000₫</div>
-						</div>
-					</a>
-				<?php endif; ?>
+				<?php endforeach; ?>
 			</div>
 		</section>
+	<?php endif; ?>
 
-	</div>
+</div><!-- /.shoe-detail-container -->
 </main>
 
-<!-- SIZE GUIDE MODAL POPUP -->
+<!-- MODAL BẢNG SIZE -->
 <div class="shoe-modal" id="shoeSizeModal" role="dialog" aria-modal="true" aria-labelledby="shoeModalTitle">
 	<div class="shoe-modal-backdrop" id="shoeModalBackdrop"></div>
 	<div class="shoe-modal-dialog">
 		<div class="shoe-modal-header">
-			<h3 id="shoeModalTitle">Bảng kích thước & Hướng dẫn đo size</h3>
-			<button type="button" class="shoe-modal-close" id="shoeModalClose" aria-label="Đóng bảng size">✕</button>
+			<h3 id="shoeModalTitle">Bảng kích thước</h3>
+			<button type="button" class="shoe-modal-close" id="shoeModalClose" aria-label="Đóng">✕</button>
 		</div>
 		<div class="shoe-modal-body">
-			<p>Nếu bạn phân vân giữa 2 kích cỡ liền kề, hãy chọn size lớn hơn 0.5 cỡ để các ngón chân có không gian cử động thoải mái nhất khi chạy.</p>
+			<?php
+			if ( $size_guide_page && $size_guide_page->post_content ) {
+				echo wp_kses_post( apply_filters( 'the_content', $size_guide_page->post_content ) );
+			} else {
+			?>
 			<table class="shoe-size-table">
-				<thead>
-					<tr>
-						<th>Chiều dài chân (cm)</th>
-						<th>Size EU/VN</th>
-						<th>Size US Nam</th>
-						<th>Size US Nữ</th>
-					</tr>
-				</thead>
+				<thead><tr><th>Chiều dài (cm)</th><th>EU/VN</th><th>US Nam</th><th>US Nữ</th></tr></thead>
 				<tbody>
-					<tr><td>23.5 - 24.0 cm</td><td><strong>38</strong></td><td>6.0</td><td>7.5</td></tr>
-					<tr><td>24.1 - 24.5 cm</td><td><strong>39</strong></td><td>6.5</td><td>8.0</td></tr>
-					<tr><td>24.6 - 25.0 cm</td><td><strong>40</strong></td><td>7.0</td><td>8.5</td></tr>
-					<tr class="highlight"><td>25.1 - 25.5 cm</td><td><strong>41</strong> (Phổ biến)</td><td>8.0</td><td>9.5</td></tr>
-					<tr><td>25.6 - 26.0 cm</td><td><strong>42</strong></td><td>8.5</td><td>10.0</td></tr>
-					<tr><td>26.1 - 26.5 cm</td><td><strong>43</strong></td><td>9.5</td><td>11.0</td></tr>
-					<tr><td>26.6 - 27.0 cm</td><td><strong>44</strong></td><td>10.0</td><td>11.5</td></tr>
+					<tr><td>23.5–24.0</td><td><strong>38</strong></td><td>6.0</td><td>7.5</td></tr>
+					<tr><td>24.1–24.5</td><td><strong>39</strong></td><td>6.5</td><td>8.0</td></tr>
+					<tr><td>24.6–25.0</td><td><strong>40</strong></td><td>7.0</td><td>8.5</td></tr>
+					<tr class="highlight"><td>25.1–25.5</td><td><strong>41</strong></td><td>8.0</td><td>9.5</td></tr>
+					<tr><td>25.6–26.0</td><td><strong>42</strong></td><td>8.5</td><td>10.0</td></tr>
+					<tr><td>26.1–26.5</td><td><strong>43</strong></td><td>9.5</td><td>11.0</td></tr>
+					<tr><td>26.6–27.0</td><td><strong>44</strong></td><td>10.0</td><td>11.5</td></tr>
 				</tbody>
 			</table>
+			<?php } ?>
 		</div>
 	</div>
 </div>
 
-<!-- TOAST ALERT -->
+<!-- TOAST -->
 <div class="shoe-toast" id="shoeToast" role="alert" aria-live="polite">
 	<div class="shoe-toast-body">
 		<span class="shoe-toast-icon">✓</span>
 		<div class="shoe-toast-text">
-			<strong id="shoeToastTitle">Đã thêm vào giỏ hàng!</strong>
-			<span id="shoeToastDesc">1 x <?php echo esc_html( $title ); ?></span>
+			<strong>Đã thêm vào giỏ hàng!</strong>
+			<span id="shoeToastDesc"><?php echo esc_html( $title ); ?></span>
 		</div>
-		<a href="<?php echo esc_url( $cart_url ); ?>" class="shoe-toast-btn">Xem giỏ hàng →</a>
+		<a href="<?php echo esc_url( $cart_url ); ?>" class="shoe-toast-btn">Xem giỏ →</a>
 	</div>
 </div>
 
-<!-- INTERACTIVE SCRIPTS -->
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-	// 1. Gallery Thumbnail Switcher
+
+	// Gallery
 	const mainImg = document.getElementById('shoeMainImage');
-	const thumbs = document.querySelectorAll('.shoe-thumb-btn');
-	thumbs.forEach(btn => {
+	document.querySelectorAll('.shoe-thumb-btn').forEach(btn => {
 		btn.addEventListener('click', function () {
-			thumbs.forEach(b => b.classList.remove('is-active'));
+			document.querySelectorAll('.shoe-thumb-btn').forEach(b => b.classList.remove('is-active'));
 			this.classList.add('is-active');
-			const targetUrl = this.getAttribute('data-full');
-			if (mainImg && targetUrl) {
-				mainImg.style.opacity = '0.35';
-				setTimeout(() => {
-					mainImg.src = targetUrl;
-					mainImg.style.opacity = '1';
-				}, 120);
+			if (mainImg) {
+				mainImg.style.opacity = '0.3';
+				setTimeout(() => { mainImg.src = this.dataset.full; mainImg.style.opacity = '1'; }, 110);
 			}
 		});
 	});
 
-	// 2. Size Picker
-	let selectedSize = '41';
-	const sizePills = document.querySelectorAll('.shoe-size-pill');
-	sizePills.forEach(pill => {
+	// Size picker
+	document.querySelectorAll('.shoe-size-pill').forEach(pill => {
 		pill.addEventListener('click', function () {
-			sizePills.forEach(p => p.classList.remove('is-selected'));
+			document.querySelectorAll('.shoe-size-pill').forEach(p => p.classList.remove('is-selected'));
 			this.classList.add('is-selected');
-			selectedSize = this.getAttribute('data-size');
 		});
 	});
 
-	// 3. Color Picker
-	const colorPills = document.querySelectorAll('.shoe-color-pill');
-	const selectedColorLabel = document.getElementById('shoeSelectedColor');
-	colorPills.forEach(pill => {
+	// Color picker
+	const colorLabel = document.getElementById('shoeSelectedColor');
+	document.querySelectorAll('.shoe-color-pill').forEach(pill => {
 		pill.addEventListener('click', function () {
-			colorPills.forEach(p => p.classList.remove('is-selected'));
+			document.querySelectorAll('.shoe-color-pill').forEach(p => p.classList.remove('is-selected'));
 			this.classList.add('is-selected');
-			const colorName = this.getAttribute('data-color');
-			if (selectedColorLabel && colorName) {
-				selectedColorLabel.textContent = colorName;
-			}
+			if (colorLabel) colorLabel.textContent = this.dataset.color;
 		});
 	});
 
-	// 4. Quantity Stepper
-	const qtyInput = document.getElementById('shoeQtyInput');
-	const qtyMinus = document.getElementById('qtyMinus');
-	const qtyPlus = document.getElementById('qtyPlus');
-	if (qtyMinus && qtyInput) {
-		qtyMinus.addEventListener('click', function () {
-			let val = parseInt(qtyInput.value, 10) || 1;
-			if (val > 1) qtyInput.value = val - 1;
-		});
-	}
-	if (qtyPlus && qtyInput) {
-		qtyPlus.addEventListener('click', function () {
-			let val = parseInt(qtyInput.value, 10) || 1;
-			if (val < 99) qtyInput.value = val + 1;
-		});
-	}
-
-	// 5. Tabs
-	const tabBtns = document.querySelectorAll('.shoe-tab-btn');
+	// Tabs
+	const tabBtns   = document.querySelectorAll('.shoe-tab-btn');
 	const tabPanels = document.querySelectorAll('.shoe-tab-panel');
+	function activateTab(id) {
+		tabBtns.forEach(b => b.classList.remove('is-active'));
+		tabPanels.forEach(p => p.classList.remove('is-active'));
+		const btn = document.querySelector('[data-tab="' + id + '"]');
+		const panel = document.getElementById(id);
+		if (btn)   btn.classList.add('is-active');
+		if (panel) panel.classList.add('is-active');
+	}
 	tabBtns.forEach(btn => {
-		btn.addEventListener('click', function () {
-			const targetId = this.getAttribute('data-tab');
-			tabBtns.forEach(b => b.classList.remove('is-active'));
-			tabPanels.forEach(p => p.classList.remove('is-active'));
-			this.classList.add('is-active');
-			const panel = document.getElementById(targetId);
-			if (panel) panel.classList.add('is-active');
+		btn.addEventListener('click', function () { activateTab(this.dataset.tab); });
+	});
+	// Scroll to reviews tab khi click link đánh giá
+	const reviewLink = document.getElementById('shoeTabReviewsLink');
+	if (reviewLink) {
+		reviewLink.addEventListener('click', function (e) {
+			e.preventDefault();
+			activateTab('tabReviews');
+			document.getElementById('shoeDetailTabs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 		});
-	});
+	}
+	// Tabs từ nút Review trong nav
+	const reviewTabBtn = document.getElementById('shoeTabReviews');
+	if (reviewTabBtn) {
+		reviewTabBtn.addEventListener('click', function () { activateTab('tabReviews'); });
+	}
 
-	// 6. Size Guide Modal
-	const openModalBtn = document.getElementById('shoeOpenSizeGuide');
+	// Modal
 	const modal = document.getElementById('shoeSizeModal');
-	const closeModalBtn = document.getElementById('shoeModalClose');
-	const modalBackdrop = document.getElementById('shoeModalBackdrop');
-	function openModal() { if (modal) modal.classList.add('is-open'); }
-	function closeModal() { if (modal) modal.classList.remove('is-open'); }
-	if (openModalBtn) openModalBtn.addEventListener('click', openModal);
-	if (closeModalBtn) closeModalBtn.addEventListener('click', closeModal);
-	if (modalBackdrop) modalBackdrop.addEventListener('click', closeModal);
-	document.addEventListener('keydown', function (e) {
-		if (e.key === 'Escape') closeModal();
-	});
+	const openBtn  = document.getElementById('shoeOpenSizeGuide');
+	const closeBtn = document.getElementById('shoeModalClose');
+	const backdrop = document.getElementById('shoeModalBackdrop');
+	function openModal()  { modal && modal.classList.add('is-open'); }
+	function closeModal() { modal && modal.classList.remove('is-open'); }
+	if (openBtn)  openBtn.addEventListener('click', openModal);
+	if (closeBtn) closeBtn.addEventListener('click', closeModal);
+	if (backdrop) backdrop.addEventListener('click', closeModal);
+	document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
-	// 7. Toast Add to Cart Demo
-	const addCartBtn = document.getElementById('shoeBtnAddToCart');
+	// Toast khi WooCommerce thêm vào giỏ
 	const toast = document.getElementById('shoeToast');
 	const toastDesc = document.getElementById('shoeToastDesc');
-	let toastTimer = null;
-	if (addCartBtn && toast) {
-		addCartBtn.addEventListener('click', function () {
-			const qty = qtyInput ? qtyInput.value : 1;
-			if (toastDesc) {
-				toastDesc.textContent = qty + ' x <?php echo esc_js( $title ); ?> (Size ' + selectedSize + ')';
-			}
-			toast.classList.add('is-visible');
-			clearTimeout(toastTimer);
-			toastTimer = setTimeout(() => {
-				toast.classList.remove('is-visible');
-			}, 4200);
-		});
+	let toastTimer;
+	function showToast(msg) {
+		if (!toast) return;
+		if (toastDesc && msg) toastDesc.textContent = msg;
+		toast.classList.add('is-visible');
+		clearTimeout(toastTimer);
+		toastTimer = setTimeout(() => toast.classList.remove('is-visible'), 4500);
 	}
+	// Lắng nghe sự kiện WooCommerce AJAX add_to_cart
+	jQuery(document).on('added_to_cart', function (e, fragments, cart_hash, $btn) {
+		const name = $btn ? $btn.closest('.product').find('.woocommerce-loop-product__title, h1').first().text() : '';
+		showToast(name);
+	});
+
 });
 </script>
 
-<?php
-get_footer();
-
+<?php get_footer(); ?>
