@@ -45,7 +45,6 @@ add_action( 'astra_footer', 'astra_shoestore_render_footer', 1 );
 
 /** Create the storefront pages once; WooCommerce can take them over when installed. */
 add_action( 'admin_init', function () {
-	if ( get_option( 'astra_shoestore_pages_created' ) ) { return; }
 	$page_ids = array();
 	foreach ( array( 'shop' => 'Shop', 'cart' => 'Cart', 'checkout' => 'Checkout' ) as $slug => $title ) {
 		$page = get_page_by_path( $slug, OBJECT, 'page' );
