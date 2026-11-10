@@ -1,0 +1,5 @@
+2026-11-10T02:33:01+00:00 WARNING Email "admin_payment_gateway_enabled" failed to send: Không thể khởi tạo hàm thư. CONTEXT: {"email_type":"admin_payment_gateway_enabled","status":"failed","recipient":"nhom4","WC_Gateway_SePay":null}
+2026-11-10T02:34:59+00:00 WARNING Email "new_order" for order #45 failed to send: Không thể khởi tạo hàm thư. CONTEXT: {"email_type":"new_order","status":"failed","recipient":"nhom4","order":45}
+2026-11-10T02:35:02+00:00 WARNING Email "customer_on_hold_order" for order #45 failed to send: Không thể khởi tạo hàm thư. CONTEXT: {"email_type":"customer_on_hold_order","status":"failed","recipient":"mtri","order":45}
+2026-11-10T02:38:06+00:00 WARNING Email "new_order" for order #46 failed to send: Không thể khởi tạo hàm thư. CONTEXT: {"email_type":"new_order","status":"failed","recipient":"nhom4","order":46}
+2026-11-10T02:38:09+00:00 WARNING Email "customer_on_hold_order" for order #46 failed to send: Không thể khởi tạo hàm thư. CONTEXT: {"email_type":"customer_on_hold_order","status":"failed","recipient":"mtri","order":46}
